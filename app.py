@@ -123,7 +123,7 @@ with tab_add:
         with col3:
             nb = st.selectbox("Nombre", NB_OPTIONS, index=0)
         with col4:
-            dose_label = st.selectbox("Dose", list(DOSES.keys()), index=5)  # 25cl par défaut (selon ta liste)
+            dose_label = st.selectbox("Dose", list(DOSES.keys()), index=6)  # 25cl par défaut (selon ta liste)
             dose_ml = DOSES[dose_label]
 
         volume_l = (int(nb) * int(dose_ml)) / 1000.0
