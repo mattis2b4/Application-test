@@ -1,39 +1,44 @@
-#storage.py 
-
 # storage.py
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any, Dict, List
+import requests
+import streamlit as st
 
-DATA_DIR = Path(__file__).parent / "data"
-DATA_FILE = DATA_DIR / "consos.json"
+
+def _headers() -> Dict[str, str]:
+    key = st.secrets["SUPABASE_ANON_KEY"]
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
 
 
-def _ensure_data_file() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not DATA_FILE.exists():
-        DATA_FILE.write_text("[]", encoding="utf-8")
+def _base_url() -> str:
+    return st.secrets["SUPABASE_URL"].rstrip("/") + "/rest/v1/consos"
 
 
 def load_consos() -> List[Dict[str, Any]]:
-    """Charge la liste de consommations depuis le JSON."""
-    _ensure_data_file()
-    raw = DATA_FILE.read_text(encoding="utf-8").strip()
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-        if isinstance(data, list):
-            return data
-        return []
-    except json.JSONDecodeError:
-        # Si le fichier est corrompu, on repart de zéro (simple & safe)
-        return []
+    # tri : date desc puis created_at desc
+    url = _base_url()
+    params = {
+        "select": "*",
+        "order": "date.desc,created_at.desc",
+    }
+    r = requests.get(url, headers=_headers(), params=params, timeout=20)
+    r.raise_for_status()
+    return r.json()  # liste de dicts
 
 
-def save_consos(consos: List[Dict[str, Any]]) -> None:
-    """Sauvegarde la liste de consommations dans le JSON."""
-    _ensure_data_file()
-    DATA_FILE.write_text(json.dumps(consos, ensure_ascii=False, indent=2), encoding="utf-8")
+def add_conso(item: Dict[str, Any]) -> None:
+    url = _base_url()
+    r = requests.post(url, headers=_headers(), json=item, timeout=20)
+    r.raise_for_status()
+
+
+def delete_conso(conso_id: str) -> None:
+    url = _base_url()
+    params = {"id": f"eq.{conso_id}"}
+    r = requests.delete(url, headers=_headers(), params=params, timeout=20)
+    r.raise_for_status()

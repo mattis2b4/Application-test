@@ -9,7 +9,8 @@ import uuid
 import pandas as pd
 import streamlit as st
 
-from storage import load_consos, save_consos
+from storage import load_consos, add_conso, delete_conso
+
 
 
 DRINK_TYPES = ["Bière", "Cocktail", "Shot", "Vin"]
@@ -59,8 +60,7 @@ with st.form("add_conso", clear_on_submit=True):
             "boisson": boisson,
             "quantite": int(quantite),
         }
-        consos.append(new_item)
-        save_consos(consos)
+        add_conso(new_item)
         st.success(f"Ajouté : {nom_clean} • {boisson} • +{int(quantite)}")
         st.rerun()
 
@@ -117,6 +117,6 @@ else:
     if st.button("🗑️ Supprimer", type="secondary"):
         target_id = id_map[selected]
         consos2 = [c for c in consos if c.get("id") != target_id]
-        save_consos(consos2)
+        delete_conso(target_id)
         st.success("Ligne supprimée.")
         st.rerun()
