@@ -63,8 +63,22 @@ st.markdown(
     .total-title{opacity:0.85; font-size: 14px; margin-bottom: 6px;}
     .total-value{font-size: 34px; font-weight: 800; line-height: 1.1;}
     .total-sub{opacity:0.75; font-size: 13px; margin-top: 4px;}
+    /* Hall of Fame */
+    .hof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .hof-card{
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.03);
+    }
+    .hof-title{
+    font-size: 14px; opacity: 0.9; margin-bottom: 8px; font-weight: 700;
+    display:flex; gap:8px; align-items:center;
+    }
+    .hof-value{ font-size: 30px; font-weight: 900; line-height: 1.05; margin-bottom: 10px; }
+    .hof-meta{ font-size: 13px; opacity: 0.85; display:flex; flex-direction:column; gap:4px; }
+    @media (max-width: 900px){ .hof-grid{ grid-template-columns: 1fr; } }
     </style>
-
     """,
     unsafe_allow_html=True,
 )
@@ -229,73 +243,134 @@ with tab_stats:
         df_plot = df_plot.dropna(subset=["date"])
         df_plot["day"] = df_plot["date"].dt.date
 
-# ===========
-# 1) Cumul total par jour (du 09/01/2026 à la dernière conso)
-# ===========
-    st.markdown("### 📈 Volume total cumulé (L) par jour")
 
-    df_plot = df.copy()
-    df_plot["date"] = pd.to_datetime(df_plot["date"], errors="coerce")
-    df_plot = df_plot.dropna(subset=["date"])
-    df_plot["day"] = df_plot["date"].dt.date
+        # =========================
+        # 🏅 Gamification / Records
+        # =========================
+        st.markdown("## 🏅 Hall of Fame")
 
-    fixed_start = datetime(2026, 1, 9).date()
-    # On veut aller jusqu'à la dernière date où il y a une consommation
-    last_day = df_plot["day"].max()
+        df_badge = df.copy()
+        df_badge["date"] = pd.to_datetime(df_badge["date"], errors="coerce")
+        df_badge = df_badge.dropna(subset=["date"])
+        df_badge["day"] = df_badge["date"].dt.date
 
-    if pd.isna(last_day) or last_day < fixed_start:
-        st.info("Pas encore de consommations depuis le 09/01/2026.")
-    else:
-        # Total par jour
-        daily_total = (
-            df_plot.groupby("day", as_index=False)["volume_l"]
-            .sum()
-            .sort_values("day")
-        )
-        # Crée tous les jours entre fixed_start et last_day
-        all_days = pd.date_range(start=fixed_start, end=last_day, freq="D").date
+        # Sécurité
+        df_badge["volume_l"] = pd.to_numeric(df_badge["volume_l"], errors="coerce").fillna(0.0)
+        df_badge["nom"] = df_badge["nom"].fillna("Inconnu")
+        df_badge["boisson"] = df_badge["boisson"].fillna("Autre")
 
-        # Ajoute les jours sans conso à 0
-        daily_total = daily_total.set_index("day").reindex(all_days, fill_value=0.0).reset_index()
-        daily_total = daily_total.rename(columns={"index": "day"})
+        total_all = float(df_badge["volume_l"].sum())
 
-        # Cumul
-        daily_total["cumul_l"] = daily_total["volume_l"].cumsum()
+        # 1) Roi/Reine du comptoir (total)
+        by_person_total = df_badge.groupby("nom", as_index=False)["volume_l"].sum().sort_values("volume_l", ascending=False)
+        king_name = by_person_total.iloc[0]["nom"] if not by_person_total.empty else "-"
+        king_val = float(by_person_total.iloc[0]["volume_l"]) if not by_person_total.empty else 0.0
 
-        # Plot
-        fig1 = plt.figure()
-        ax1 = fig1.add_subplot(111)
-        x = pd.to_datetime(daily_total["day"])
-        y = daily_total["cumul_l"]
+        # 2) Gros coup (record perso sur un jour)
+        by_person_day = df_badge.groupby(["day", "nom"], as_index=False)["volume_l"].sum().sort_values("volume_l", ascending=False)
+        best_day = by_person_day.iloc[0]["day"] if not by_person_day.empty else "-"
+        best_name = by_person_day.iloc[0]["nom"] if not by_person_day.empty else "-"
+        best_val = float(by_person_day.iloc[0]["volume_l"]) if not by_person_day.empty else 0.0
 
-        ymax = float(y.max()) if len(y) else 0.0
-        ax1.set_ylim(0, ymax * 1.05 if ymax > 0 else 1)
+        # 3) Soirée légendaire (record collectif sur un jour)
+        by_day_total = df_badge.groupby("day", as_index=False)["volume_l"].sum().sort_values("volume_l", ascending=False)
+        party_day = by_day_total.iloc[0]["day"] if not by_day_total.empty else "-"
+        party_val = float(by_day_total.iloc[0]["volume_l"]) if not by_day_total.empty else 0.0
 
+        # 4) Explorateur (nb types de boissons)
+        by_diversity = df_badge.groupby("nom", as_index=False)["boisson"].nunique().sort_values("boisson", ascending=False)
+        explorer_name = by_diversity.iloc[0]["nom"] if not by_diversity.empty else "-"
+        explorer_val = int(by_diversity.iloc[0]["boisson"]) if not by_diversity.empty else 0
 
-        ax1.plot(x, y)
-        ax1.set_ylabel("Litres (cumul)")
-        ax1.set_xlabel("Date")
-        # Affichage intelligent des dates (au fil des jours -> plus on avance, plus on agrège)
-        days_range = (pd.to_datetime(last_day) - pd.to_datetime(fixed_start)).days
+        # 5) Boisson reine (volume total par boisson)
+        by_drink = df_badge.groupby("boisson", as_index=False)["volume_l"].sum().sort_values("volume_l", ascending=False)
+        top_drink = by_drink.iloc[0]["boisson"] if not by_drink.empty else "-"
+        top_drink_val = float(by_drink.iloc[0]["volume_l"]) if not by_drink.empty else 0.0
 
-        if days_range <= 31:
-            locator = mdates.DayLocator(interval=2)
-            formatter = mdates.DateFormatter("%d/%m")
-        elif days_range <= 120:
-            locator = mdates.WeekdayLocator(interval=1)
-            formatter = mdates.DateFormatter("%d/%m")
+        # 6) Régulier (streak jours consécutifs avec conso)
+        def longest_streak(days_list):
+            # days_list: liste de dates python (triées)
+            if not days_list:
+                return 0
+            days_sorted = sorted(days_list)
+            streak = best = 1
+            for i in range(1, len(days_sorted)):
+                if (days_sorted[i] - days_sorted[i-1]).days == 1:
+                    streak += 1
+                else:
+                    best = max(best, streak)
+                    streak = 1
+            return max(best, streak)
+        
+        # 7) Sniper (Shot) - plus gros volume de Shot
+        df_shot = df_badge[df_badge["boisson"] == "Shot"]
+        if df_shot.empty:
+            sniper_name, sniper_val = "-", 0.0
         else:
-            locator = mdates.MonthLocator(interval=1)
-            formatter = mdates.DateFormatter("%b %Y")
+            sniper = (
+                df_shot.groupby("nom", as_index=False)["volume_l"]
+                .sum()
+                .sort_values("volume_l", ascending=False)
+            )
+            sniper_name = sniper.iloc[0]["nom"]
+            sniper_val = float(sniper.iloc[0]["volume_l"])
 
-        ax1.xaxis.set_major_locator(locator)
-        ax1.xaxis.set_major_formatter(formatter)
-        fig1.autofmt_xdate()
+        # 8) Sommelier (Vin) - plus gros volume de Vin
+        df_vin = df_badge[df_badge["boisson"] == "Vin"]
+        if df_vin.empty:
+            sommelier_name, sommelier_val = "-", 0.0
+        else:
+            sommelier = (
+                df_vin.groupby("nom", as_index=False)["volume_l"]
+                .sum()
+                .sort_values("volume_l", ascending=False)
+            )
+            sommelier_name = sommelier.iloc[0]["nom"]
+            sommelier_val = float(sommelier.iloc[0]["volume_l"])
 
-        st.pyplot(fig1, clear_figure=True)
+
+        streak_rows = []
+        df_pos = df_badge[df_badge["volume_l"] > 0].copy()
+        for name, g in df_pos.groupby("nom"):
+            days = list(set(g["day"].tolist()))
+            streak_rows.append({"nom": name, "streak": longest_streak(days)})
+
+        if streak_rows:
+            df_streak = pd.DataFrame(streak_rows).sort_values("streak", ascending=False)
+            regular_name = df_streak.iloc[0]["nom"]
+            regular_val = int(df_streak.iloc[0]["streak"])
+        else:
+            regular_name, regular_val = "-", 0
+
+        # Affichage en cards (simple, lisible sur mobile)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("🍻 Total club", f"{total_all:.2f} L")
+            st.metric("🏆 Roi/Reine du comptoir", f"{king_val:.2f} L", help=f"{king_name}")
+            st.caption(f"👑 **{king_name}**")
+            st.metric("🍷 Sommelier (Vin)", f"{sommelier_val:.2f} L", help=f"{sommelier_name}")
+            st.caption(f"**{sommelier_name}**")
+        with c2:
+            st.metric("⚡ Gros coup (1 jour)", f"{best_val:.2f} L", help=f"{best_name} le {best_day}")
+            st.caption(f"**{best_name}** — {best_day}")
+            st.metric("👥 Soirée légendaire", f"{party_val:.2f} L", help=f"le {party_day}")
+            st.caption(f"📅 **{party_day}**")
+            st.metric("🎯 Sniper (Shot)", f"{sniper_val:.2f} L", help=f"{sniper_name}")
+            st.caption(f"**{sniper_name}**")
+
+        with c3:
+            st.metric("🔥 Régulier", f"{regular_val} jour(s)", help=f"{regular_name}")
+            st.caption(f"**{regular_name}**")
+            st.metric("🧪 Explorateur", f"{explorer_val} boisson(s)", help=f"{explorer_name}")
+            st.caption(f"**{explorer_name}**")
+            st.metric("🍹 Boisson reine", f"{top_drink_val:.2f} L", help=top_drink)
+            st.caption(f"**{top_drink}**")
+
+        st.divider()
+
 
         # ===========
-        # 2) Courbes par personne (filtre boisson + période + sélection)
+        # 1) Courbes par personne (filtre boisson + période + sélection)
         # ===========
         st.markdown("### 👥 Consommation par personne (L/jour)")
 
@@ -376,6 +451,73 @@ with tab_stats:
                 ax2.xaxis.set_major_formatter(formatter2)
 
                 st.pyplot(fig2, clear_figure=True)
+
+
+        # ===========
+        # 2) Cumul total par jour (du 09/01/2026 à la dernière conso)
+        # ===========
+    st.markdown("### 📈 Volume total cumulé (L) par jour")
+
+    df_plot = df.copy()
+    df_plot["date"] = pd.to_datetime(df_plot["date"], errors="coerce")
+    df_plot = df_plot.dropna(subset=["date"])
+    df_plot["day"] = df_plot["date"].dt.date
+
+    fixed_start = datetime(2026, 1, 9).date()
+    # On veut aller jusqu'à la dernière date où il y a une consommation
+    last_day = df_plot["day"].max()
+
+    if pd.isna(last_day) or last_day < fixed_start:
+        st.info("Pas encore de consommations depuis le 09/01/2026.")
+    else:
+        # Total par jour
+        daily_total = (
+            df_plot.groupby("day", as_index=False)["volume_l"]
+            .sum()
+            .sort_values("day")
+        )
+        # Crée tous les jours entre fixed_start et last_day
+        all_days = pd.date_range(start=fixed_start, end=last_day, freq="D").date
+
+        # Ajoute les jours sans conso à 0
+        daily_total = daily_total.set_index("day").reindex(all_days, fill_value=0.0).reset_index()
+        daily_total = daily_total.rename(columns={"index": "day"})
+
+        # Cumul
+        daily_total["cumul_l"] = daily_total["volume_l"].cumsum()
+
+        # Plot
+        fig1 = plt.figure()
+        ax1 = fig1.add_subplot(111)
+        x = pd.to_datetime(daily_total["day"])
+        y = daily_total["cumul_l"]
+
+        ymax = float(y.max()) if len(y) else 0.0
+        ax1.set_ylim(0, ymax * 1.05 if ymax > 0 else 1)
+
+
+        ax1.plot(x, y)
+        ax1.set_ylabel("Litres (cumul)")
+        ax1.set_xlabel("Date")
+        # Affichage intelligent des dates (au fil des jours -> plus on avance, plus on agrège)
+        days_range = (pd.to_datetime(last_day) - pd.to_datetime(fixed_start)).days
+
+        if days_range <= 31:
+            locator = mdates.DayLocator(interval=2)
+            formatter = mdates.DateFormatter("%d/%m")
+        elif days_range <= 120:
+            locator = mdates.WeekdayLocator(interval=1)
+            formatter = mdates.DateFormatter("%d/%m")
+        else:
+            locator = mdates.MonthLocator(interval=1)
+            formatter = mdates.DateFormatter("%b %Y")
+
+        ax1.xaxis.set_major_locator(locator)
+        ax1.xaxis.set_major_formatter(formatter)
+        fig1.autofmt_xdate()
+
+        st.pyplot(fig1, clear_figure=True)
+
 
 # ==================
 # TAB : SUPPRIMER
